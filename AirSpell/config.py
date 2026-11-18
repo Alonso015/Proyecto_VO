@@ -1,0 +1,13 @@
+"""Valores iniciales para una webcam y un marcador verde mate."""
+
+CAMERA_SIZE = (640, 480)
+HSV_LOWER = (40, 90, 70)
+HSV_UPPER = (85, 255, 255)
+MIN_MARKER_AREA = 100.0
+MAX_MARKER_AREA_FRACTION = 0.12
+MORPHOLOGY_KERNEL_SIZE = 5
+MAX_JUMP_FRACTION = 0.16  # Fracción de la diagonal de la imagen.
+NEW_POSITION_WEIGHT = 0.65
+MISSING_FRAMES_BEFORE_RESET = 5
+MIN_POINT_DISTANCE = 3.0
+MIN_STROKE_EXTENT = 25.0
