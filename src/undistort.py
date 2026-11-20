@@ -50,4 +50,4 @@ def main(camera_index=0, width=1280, height=720):
 
 
 if __name__ == "__main__":
-    main(camera_index=1, width=1280, height=720)
+    main(camera_index=0, width=1280, height=720)
