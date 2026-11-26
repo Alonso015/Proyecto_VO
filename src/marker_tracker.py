@@ -4,10 +4,12 @@ import numpy as np
 from undistort import get_undistort_maps
 from letter_recognizer import LetterRecognizer
 from decoder import SequenceDecoder
+from pose_detector import PoseDetector
+from camera_settings import CameraLock
 
 # HSV range of the finger marker (find it with src/hsv_ranges.py)
-LOWER_MARKER = (31, 32, 140)
-UPPER_MARKER = (90, 255, 255)
+LOWER_MARKER = (30, 50, 140)
+UPPER_MARKER = (100, 255, 255)
 
 
 
@@ -58,9 +60,11 @@ def main(camera_index=0, width=1280, height=720):
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
+    camera_lock = CameraLock(cap)   # fixed exposure during phase 2
+
     map1, map2 = get_undistort_maps((width, height))
 
-    window_name = "Marker tracker - 's' start, 'e' end, 't' templates, 'u' undo, 'r' reset, 'c' clear, 'q' quit"
+    window_name = "Marker tracker - 's' start, 'e' end, 't' templates, 'u' undo, 'b' background, 'r' reset, 'c' clear, 'q' quit"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     cv2.namedWindow("Mask", cv2.WINDOW_NORMAL)
 
@@ -74,6 +78,7 @@ def main(camera_index=0, width=1280, height=720):
     template_letter = LETTERS[0]
     message = ""            # result shown on screen
     decoder = SequenceDecoder(PASSWORD)
+    pose_detector = PoseDetector()
 
     try:
         while True:
@@ -83,17 +88,26 @@ def main(camera_index=0, width=1280, height=720):
                 break
 
             # Undistort and mirror the image
+            frame = camera_lock.apply(frame)   # fixed gain while phase 2 has the camera locked
             frame = cv2.remap(frame, map1, map2, cv2.INTER_LINEAR)
             frame = cv2.flip(frame, 1)
 
             mask = segment_marker(frame)
-            center = find_marker(mask)
 
-            if center is not None:
-                # Only store the points while recording
-                if recording:
-                    trajectory.append(center)
-                cv2.circle(frame, center, 10, (0, 0, 255), -1)
+            if decoder.unlocked and not template_mode:
+                # Phase 2: body poses with the star skeleton (background subtraction)
+                spell = pose_detector.process(frame)
+                mask = pose_detector.mask
+                if spell is not None:
+                    print(f"Spell: {spell}")
+            else:
+                # Phase 1: finger marker
+                center = find_marker(mask)
+                if center is not None:
+                    # Only store the points while recording
+                    if recording:
+                        trajectory.append(center)
+                    cv2.circle(frame, center, 10, (0, 0, 255), -1)
 
             # Draw the finished strokes (blue) and the current one (green)
             for stroke in strokes:
@@ -153,6 +167,8 @@ def main(camera_index=0, width=1280, height=720):
                             message = f"Letter: {letter} (distance {distance:.1f})"
                         decoder.add(letter)
                         print(decoder.message)
+                        if decoder.unlocked:
+                            strokes = []
                     print(message)
                 else:
                     message = "Stroke too short"
@@ -173,6 +189,12 @@ def main(camera_index=0, width=1280, height=720):
                 # Forget the sequence (and lock again if it was unlocked)
                 decoder.lock()
                 strokes = []
+                pose_detector = PoseDetector()
+                camera_lock.unlock()
+            if key == ord('b'):
+                # Fix the exposure and learn the background of phase 2 (nobody in the frame)
+                camera_lock.lock()
+                pose_detector.learn_background()
             if key == ord('c'):
                 recording = False
                 trajectory = []
@@ -183,6 +205,7 @@ def main(camera_index=0, width=1280, height=720):
     except KeyboardInterrupt:
         pass
     finally:
+        camera_lock.unlock()
         cap.release()
         cv2.destroyAllWindows()
 
